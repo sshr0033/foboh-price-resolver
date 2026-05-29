@@ -8,6 +8,12 @@ type Props = {
   children: ReactNode;
   /** Tailwind max-width class. Defaults to a medium-wide dialog. */
   maxWidth?: string;
+  /**
+   * Classes for the body wrapper. Default makes the body scroll + pad.
+   * Pass a flex-column (non-scrolling) class when the child wants to manage
+   * its own scroll region + a pinned footer.
+   */
+  bodyClassName?: string;
 };
 
 export default function Modal({
@@ -17,6 +23,7 @@ export default function Modal({
   description,
   children,
   maxWidth = 'max-w-3xl',
+  bodyClassName = 'flex-1 overflow-y-auto p-6',
 }: Props): JSX.Element | null {
   useEffect(() => {
     if (!open) return;
@@ -66,7 +73,7 @@ export default function Modal({
             ✕
           </button>
         </header>
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
+        <div className={bodyClassName}>{children}</div>
       </div>
     </div>
   );

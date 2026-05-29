@@ -264,7 +264,8 @@ export default function ProfileEditForm({ profile, onCancel, onSaved }: Props): 
     ovType === 'CUSTOM_PRICE' && (!Number.isFinite(customPrice) || customPrice < 0);
 
   return (
-    <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-6">
+    <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col h-full min-h-0">
+      <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
       {/* Basic ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3">
         <SectionHeader title="Basics" />
@@ -617,9 +618,10 @@ export default function ProfileEditForm({ profile, onCancel, onSaved }: Props): 
           ))}
         </ul>
       ) : null}
+      </div>
 
-      {/* Footer — sticks to the modal bottom */}
-      <div className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-white border-t border-slate-200 flex items-center justify-end gap-2 z-10 shadow-[0_-6px_12px_-6px_rgba(15,23,42,0.08)]">
+      {/* Footer — pinned outside the scroll area so it never covers content */}
+      <div className="shrink-0 px-6 py-4 bg-white border-t border-slate-200 flex items-center justify-end gap-2 shadow-[0_-6px_12px_-6px_rgba(15,23,42,0.08)]">
         <button
           type="button"
           onClick={onCancel}
