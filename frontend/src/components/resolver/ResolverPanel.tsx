@@ -6,7 +6,14 @@ import {
 } from '../../store/api';
 import { formatAUD } from '../../utils/debounce';
 
-export default function ResolverPanel(): JSX.Element {
+type Props = {
+  /** When true, suppresses the outer card chrome and the redundant heading.
+   * Use this when rendering the panel inside a host that already provides them
+   * (e.g. inside a Modal whose own header already describes the action). */
+  embedded?: boolean;
+};
+
+export default function ResolverPanel({ embedded = false }: Props): JSX.Element {
   const customers = useListCustomersQuery();
   const products = useListProductsQuery({});
   const [customerId, setCustomerId] = useState('');
@@ -20,14 +27,20 @@ export default function ResolverPanel(): JSX.Element {
     void trigger({ customerId, productId });
   };
 
+  const wrapperClass = embedded
+    ? 'flex flex-col gap-4'
+    : 'bg-white border border-slate-200 rounded-xl p-6 flex flex-col gap-4';
+
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-6 flex flex-col gap-4">
-      <div>
-        <h2 className="font-semibold text-slate-900">Try the resolver</h2>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Pick a customer and a product to see which pricing profile applies — and why.
-        </p>
-      </div>
+    <section className={wrapperClass}>
+      {embedded ? null : (
+        <div>
+          <h2 className="font-semibold text-slate-900">Try the resolver</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Pick a customer and a product to see which pricing profile applies — and why.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
         <label className="flex flex-col gap-1.5">
@@ -76,7 +89,10 @@ export default function ResolverPanel(): JSX.Element {
 
       {result.error ? (
         <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          Could not resolve: {String((result.error as { data?: { error?: string } }).data?.error ?? 'unknown error')}
+          Could not resolve:{' '}
+          {String(
+            (result.error as { data?: { error?: string } }).data?.error ?? 'unknown error',
+          )}
         </div>
       ) : null}
 
@@ -98,9 +114,7 @@ export default function ResolverPanel(): JSX.Element {
             {result.data.source.kind === 'BASE_PRICE' ? (
               <span className="text-slate-600">No profile matched — base price.</span>
             ) : (
-              <span className="text-foboh-700 font-medium">
-                {result.data.source.profileName}
-              </span>
+              <span className="text-foboh-700 font-medium">{result.data.source.profileName}</span>
             )}
           </div>
           <div className="text-sm text-slate-700">
