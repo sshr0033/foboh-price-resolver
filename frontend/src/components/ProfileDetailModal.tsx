@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Modal from './Modal';
+import ProfileEditForm from './ProfileEditForm';
 import { pushToast } from './Toast';
 import {
   useDeleteProfileMutation,
@@ -49,10 +50,8 @@ function describePriceOverride(p: PricingProfile): string {
 
 export default function ProfileDetailModal({ profile, onClose }: Props): JSX.Element | null {
   const [mode, setMode] = useState<Mode>('VIEW');
-  const [editName, setEditName] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editStatus, setEditStatus] = useState<ProfileStatus>('DRAFT');
 
+  // Toggle-status and delete still live here — only the full edit moved out.
   const [updateProfile, updateState] = useUpdateProfileMutation();
   const [deleteProfile, deleteState] = useDeleteProfileMutation();
 
@@ -61,15 +60,10 @@ export default function ProfileDetailModal({ profile, onClose }: Props): JSX.Ele
   const groups = useListGroupsQuery();
   const products = useListProductsQuery({});
 
-  // Reset modal sub-mode and edit fields whenever we open a different profile.
+  // Reset modal sub-mode whenever we open a different profile.
   useEffect(() => {
     setMode('VIEW');
-    if (profile) {
-      setEditName(profile.name);
-      setEditDescription(profile.description ?? '');
-      setEditStatus(profile.status);
-    }
-  }, [profile?.id, profile]);
+  }, [profile?.id]);
 
   if (!profile) return null;
 
@@ -124,29 +118,6 @@ export default function ProfileDetailModal({ profile, onClose }: Props): JSX.Ele
     }
   };
 
-  const handleSaveEdit = async (): Promise<void> => {
-    const trimmedName = editName.trim();
-    if (!trimmedName) {
-      pushToast('Profile name is required.', 'error');
-      return;
-    }
-    try {
-      await updateProfile({
-        id: profile.id,
-        patch: {
-          name: trimmedName,
-          description: editDescription.trim() || undefined,
-          status: editStatus,
-        },
-      }).unwrap();
-      pushToast('Profile updated.', 'success');
-      handleClose();
-    } catch (err) {
-      const msg = (err as { data?: { error?: string } }).data?.error ?? 'Unknown error';
-      pushToast(`Update failed: ${msg}`, 'error');
-    }
-  };
-
   const handleConfirmDelete = async (): Promise<void> => {
     try {
       await deleteProfile({ id: profile.id }).unwrap();
@@ -167,8 +138,11 @@ export default function ProfileDetailModal({ profile, onClose }: Props): JSX.Ele
         ? 'Delete profile?'
         : 'Profile details';
 
+  // Wider modal in edit mode — the form has more fields to lay out.
+  const maxWidth = mode === 'EDIT' ? 'max-w-3xl' : 'max-w-2xl';
+
   return (
-    <Modal open onClose={handleClose} title={title} maxWidth="max-w-2xl">
+    <Modal open onClose={handleClose} title={title} maxWidth={maxWidth}>
       {mode === 'VIEW' ? (
         <div className="flex flex-col gap-5">
           <div className="flex items-start justify-between gap-3">
@@ -266,90 +240,11 @@ export default function ProfileDetailModal({ profile, onClose }: Props): JSX.Ele
           </div>
         </div>
       ) : mode === 'EDIT' ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void handleSaveEdit();
-          }}
-          className="flex flex-col gap-5"
-        >
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-700">
-              Profile name <span className="text-red-500">*</span>
-            </span>
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              required
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-foboh-700 focus:ring-1 focus:ring-foboh-700 outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-700">Description</span>
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              rows={2}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-foboh-700 focus:ring-1 focus:ring-foboh-700 outline-none resize-none"
-            />
-          </label>
-
-          <fieldset className="flex flex-col gap-1.5">
-            <legend className="text-sm font-medium text-slate-700">Status</legend>
-            <div className="inline-flex rounded-md border border-slate-300 overflow-hidden text-sm bg-white w-fit">
-              <button
-                type="button"
-                onClick={() => setEditStatus('DRAFT')}
-                aria-pressed={editStatus === 'DRAFT'}
-                className={`px-4 py-2 font-medium transition ${
-                  editStatus === 'DRAFT'
-                    ? 'bg-foboh-700 text-white'
-                    : 'bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                Draft
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditStatus('ACTIVE')}
-                aria-pressed={editStatus === 'ACTIVE'}
-                className={`px-4 py-2 font-medium transition border-l border-slate-300 ${
-                  editStatus === 'ACTIVE'
-                    ? 'bg-foboh-700 text-white'
-                    : 'bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                Active
-              </button>
-            </div>
-          </fieldset>
-
-          <div className="rounded-md bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600">
-            <strong className="text-slate-700">Scope &amp; pricing are read-only here.</strong>{' '}
-            To change the customer scope, product scope, or price override, delete this profile
-            and create a new one.
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setMode('VIEW')}
-              disabled={updateState.isLoading}
-              className="rounded-md border border-slate-300 bg-white text-slate-700 text-sm font-semibold px-4 py-2 hover:bg-slate-50 disabled:opacity-50 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={updateState.isLoading || !editName.trim()}
-              className="rounded-md bg-foboh-700 text-white text-sm font-semibold px-4 py-2 hover:bg-foboh-800 disabled:bg-slate-300 disabled:cursor-not-allowed transition"
-            >
-              {updateState.isLoading ? 'Saving…' : 'Save changes'}
-            </button>
-          </div>
-        </form>
+        <ProfileEditForm
+          profile={profile}
+          onCancel={() => setMode('VIEW')}
+          onSaved={handleClose}
+        />
       ) : (
         // CONFIRM_DELETE
         <div className="flex flex-col gap-4">
