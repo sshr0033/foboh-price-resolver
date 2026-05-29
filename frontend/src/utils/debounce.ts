@@ -1,0 +1,14 @@
+import { useEffect, useState } from 'react';
+
+export function useDebounced<T>(value: T, ms = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebounced(value), ms);
+    return () => window.clearTimeout(id);
+  }, [value, ms]);
+  return debounced;
+}
+
+export function formatAUD(n: number): string {
+  return n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD' });
+}
