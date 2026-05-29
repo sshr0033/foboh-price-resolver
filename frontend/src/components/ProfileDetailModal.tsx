@@ -142,7 +142,13 @@ export default function ProfileDetailModal({ profile, onClose }: Props): JSX.Ele
   const maxWidth = mode === 'EDIT' ? 'max-w-3xl' : 'max-w-2xl';
 
   return (
-    <Modal open onClose={handleClose} title={title} maxWidth={maxWidth}>
+    <Modal
+      open
+      onClose={handleClose}
+      title={title}
+      maxWidth={maxWidth}
+      bodyClassName={mode === 'EDIT' ? 'flex-1 min-h-0 flex flex-col' : undefined}
+    >
       {mode === 'VIEW' ? (
         <div className="flex flex-col gap-5">
           <div className="flex items-start justify-between gap-3">
