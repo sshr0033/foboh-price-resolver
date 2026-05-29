@@ -1,17 +1,18 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useListProductsQuery, useListProfilesQuery } from '../store/api';
 import ResolverPanel from '../components/resolver/ResolverPanel';
 import ProductsBrowser from '../components/ProductsBrowser';
 import Modal from '../components/Modal';
+import ProfileDetailModal from '../components/ProfileDetailModal';
 import ToastHost from '../components/Toast';
 import { formatAUD } from '../utils/debounce';
-import type { PricingProfile } from '../types';
+import type { PricingProfile, ProfileStatus } from '../types';
 
 type OpenModal = 'products' | 'resolver' | null;
+type StatusFilter = 'ALL' | ProfileStatus;
 
 const RECENT_WINDOW_DAYS = 30;
-const RECENT_LIST_LIMIT = 5;
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - Date.parse(iso);
@@ -164,13 +165,37 @@ function ActionCard({
   );
 }
 
-type ProfileCardProps = { profile: PricingProfile };
+type FilterTabProps = {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+};
 
-function ProfileCard({ profile }: ProfileCardProps): JSX.Element {
+function FilterTab({ active, onClick, children }: FilterTabProps): JSX.Element {
   return (
-    <Link
-      to="/pricing"
-      className="block bg-white border border-slate-200 rounded-lg px-5 py-4 hover:border-foboh-700 transition"
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`px-3.5 py-1.5 font-medium transition ${
+        active
+          ? 'bg-foboh-700 text-white'
+          : 'bg-white text-slate-700 hover:bg-slate-50'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+type ProfileCardProps = { profile: PricingProfile; onClick: () => void };
+
+function ProfileCard({ profile, onClick }: ProfileCardProps): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full text-left bg-white border border-slate-200 rounded-lg px-5 py-4 hover:border-foboh-700 hover:shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-foboh-700"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
@@ -193,7 +218,7 @@ function ProfileCard({ profile }: ProfileCardProps): JSX.Element {
           <div className="text-xs text-slate-400 mt-0.5">{timeAgo(profile.updatedAt)}</div>
         </div>
       </div>
-    </Link>
+    </button>
   );
 }
 
@@ -204,23 +229,36 @@ export default function PricingListPage(): JSX.Element {
   const products = useListProductsQuery({});
   const profiles = useListProfilesQuery();
   const [openModal, setOpenModal] = useState<OpenModal>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
 
   const totalProducts = products.data?.items.length ?? 0;
   const allProfiles = profiles.data?.items ?? [];
   const totalProfiles = allProfiles.length;
   const activeProfiles = allProfiles.filter((p) => p.status === 'ACTIVE').length;
+  const draftProfiles = totalProfiles - activeProfiles;
 
   const recentCount = useMemo(() => {
     const cutoff = Date.now() - RECENT_WINDOW_DAYS * 86_400_000;
     return allProfiles.filter((p) => Date.parse(p.updatedAt) >= cutoff).length;
   }, [allProfiles]);
 
-  const recentProfiles = useMemo(
+  const visibleProfiles = useMemo(() => {
+    const filtered =
+      statusFilter === 'ALL'
+        ? allProfiles
+        : allProfiles.filter((p) => p.status === statusFilter);
+    return [...filtered].sort(
+      (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+    );
+  }, [allProfiles, statusFilter]);
+
+  const selectedProfile = useMemo(
     () =>
-      [...allProfiles]
-        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
-        .slice(0, RECENT_LIST_LIMIT),
-    [allProfiles],
+      selectedProfileId
+        ? (allProfiles.find((p) => p.id === selectedProfileId) ?? null)
+        : null,
+    [selectedProfileId, allProfiles],
   );
 
   const profilesLoading = profiles.isLoading;
@@ -297,22 +335,41 @@ export default function PricingListPage(): JSX.Element {
         </div>
       </section>
 
-      {/* Recent Profiles */}
-      <section aria-labelledby="recent-heading" className="flex flex-col gap-3">
-        <div className="flex items-end justify-between">
+      {/* Profiles — unified, filterable, clickable */}
+      <section aria-labelledby="profiles-heading" className="flex flex-col gap-3">
+        <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
-            <h2 id="recent-heading" className="text-sm font-semibold text-slate-700">
-              Recent profiles
+            <h2 id="profiles-heading" className="text-sm font-semibold text-slate-700">
+              Profiles
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              The {RECENT_LIST_LIMIT} most-recently updated profiles.
+              Click any profile to update, deactivate, or delete it.
             </p>
           </div>
-          {totalProfiles > RECENT_LIST_LIMIT ? (
-            <span className="text-xs text-slate-500">
-              Showing {RECENT_LIST_LIMIT} of {totalProfiles}
-            </span>
-          ) : null}
+          <div
+            className="inline-flex rounded-md border border-slate-300 overflow-hidden text-sm bg-white divide-x divide-slate-300"
+            role="tablist"
+            aria-label="Filter profiles by status"
+          >
+            <FilterTab
+              active={statusFilter === 'ALL'}
+              onClick={() => setStatusFilter('ALL')}
+            >
+              All ({totalProfiles})
+            </FilterTab>
+            <FilterTab
+              active={statusFilter === 'ACTIVE'}
+              onClick={() => setStatusFilter('ACTIVE')}
+            >
+              Active ({activeProfiles})
+            </FilterTab>
+            <FilterTab
+              active={statusFilter === 'DRAFT'}
+              onClick={() => setStatusFilter('DRAFT')}
+            >
+              Draft ({draftProfiles})
+            </FilterTab>
+          </div>
         </div>
 
         {profilesLoading ? (
@@ -323,10 +380,14 @@ export default function PricingListPage(): JSX.Element {
           <div className="bg-red-50 border border-red-200 rounded-lg px-5 py-6 text-center text-sm text-red-700">
             Could not load profiles. Check the backend is running on :4000.
           </div>
-        ) : recentProfiles.length === 0 ? (
+        ) : visibleProfiles.length === 0 ? (
           <div className="bg-white border border-dashed border-slate-300 rounded-lg px-5 py-10 text-center">
             <p className="text-sm text-slate-500">
-              No pricing profiles yet — create one to get started.
+              {statusFilter === 'ALL'
+                ? 'No pricing profiles yet — create one to get started.'
+                : statusFilter === 'ACTIVE'
+                  ? 'No active profiles. Switch a draft to active, or create a new one.'
+                  : 'No draft profiles. Drafts let you stage changes before going live.'}
             </p>
             <button
               type="button"
@@ -339,8 +400,12 @@ export default function PricingListPage(): JSX.Element {
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {recentProfiles.map((p) => (
-              <ProfileCard key={p.id} profile={p} />
+            {visibleProfiles.map((p) => (
+              <ProfileCard
+                key={p.id}
+                profile={p}
+                onClick={() => setSelectedProfileId(p.id)}
+              />
             ))}
           </div>
         )}
@@ -366,6 +431,11 @@ export default function PricingListPage(): JSX.Element {
       >
         <ResolverPanel embedded />
       </Modal>
+
+      <ProfileDetailModal
+        profile={selectedProfile}
+        onClose={() => setSelectedProfileId(null)}
+      />
 
       <ToastHost />
     </div>
