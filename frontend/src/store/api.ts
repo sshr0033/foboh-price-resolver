@@ -19,6 +19,7 @@ export type ProductsQueryArgs = {
 };
 
 export type ProfileCreateBody = Omit<PricingProfile, 'id' | 'createdAt' | 'updatedAt'>;
+export type ProfileUpdateBody = Partial<ProfileCreateBody>;
 
 export const api = createApi({
   reducerPath: 'api',
@@ -56,6 +57,27 @@ export const api = createApi({
       query: (body) => ({ url: '/pricing-profiles', method: 'POST', body }),
       invalidatesTags: ['Profiles'],
     }),
+    updateProfile: build.mutation<
+      PricingProfile,
+      { id: string; patch: ProfileUpdateBody }
+    >({
+      query: ({ id, patch }) => ({
+        url: `/pricing-profiles/${id}`,
+        method: 'PATCH',
+        body: patch,
+      }),
+      invalidatesTags: ['Profiles'],
+    }),
+    deleteProfile: build.mutation<string, { id: string }>({
+      // Backend returns 204 with no body; tell RTK Query to read it as text
+      // (the default JSON handler would throw on an empty body).
+      query: ({ id }) => ({
+        url: `/pricing-profiles/${id}`,
+        method: 'DELETE',
+        responseHandler: 'text',
+      }),
+      invalidatesTags: ['Profiles'],
+    }),
     previewPrices: build.query<
       Listed<PreviewLine>,
       { productIds: string[]; priceOverride: PriceOverride }
@@ -75,6 +97,8 @@ export const {
   useListGroupsQuery,
   useListProfilesQuery,
   useCreateProfileMutation,
+  useUpdateProfileMutation,
+  useDeleteProfileMutation,
   usePreviewPricesQuery,
   useResolvePriceQuery,
   useLazyResolvePriceQuery,
