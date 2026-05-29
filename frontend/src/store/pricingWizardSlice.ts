@@ -5,12 +5,9 @@ import type {
   PriceOverride,
 } from '../types';
 
-export type ScopeChoice = 'ONE' | 'MULTIPLE' | 'ALL';
-
 export type WizardState = {
   name: string;
   description: string;
-  scopeChoice: ScopeChoice;
   selectedProductIds: string[];
   filters: {
     q: string;
@@ -31,7 +28,6 @@ export type WizardState = {
 const initialState: WizardState = {
   name: '',
   description: '',
-  scopeChoice: 'MULTIPLE',
   selectedProductIds: [],
   filters: { q: '', subCategory: '', segment: '', brand: '' },
   adjustment: {
@@ -54,9 +50,6 @@ const slice = createSlice({
     },
     setDescription(state, action: PayloadAction<string>) {
       state.description = action.payload;
-    },
-    setScopeChoice(state, action: PayloadAction<ScopeChoice>) {
-      state.scopeChoice = action.payload;
     },
     setFilter(
       state,
@@ -104,7 +97,6 @@ export const {
   reset,
   setName,
   setDescription,
-  setScopeChoice,
   setFilter,
   toggleProduct,
   selectAll,

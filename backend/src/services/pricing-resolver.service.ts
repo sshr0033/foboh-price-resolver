@@ -11,23 +11,33 @@ import type {
 } from '../types.js';
 import { getCustomer } from './customers.service.js';
 
-function customerScopeMatches(profile: PricingProfile, customer: Customer): boolean {
-  const cs = profile.customerScope;
-  if (cs.type === 'ALL') return true;
-  if (cs.type === 'CUSTOMER') return cs.customerId === customer.id;
-  return customer.groupIds.includes(cs.groupId);
-}
+// ── Specificity hierarchy ──────────────────────────────────────────────────
+//
+// Customer-specificity dominates product-specificity (see README §5). Of the
+// 9 combinations of (customerScope.type, productScope.type), 5 align with the
+// canonical commercial "levels" we expose; the other 4 fit naturally between
+// or after them based on the same customer-first ordering.
 
-function productScopeMatches(profile: PricingProfile, product: Product): boolean {
-  if (product.isDeleted) return false;
-  const ps = profile.productScope;
-  if (ps.type === 'ALL') return true;
-  if (ps.type === 'PRODUCT_LIST') return ps.productIds.includes(product.id);
-  const f = ps.filters;
-  if (f.subCategory && f.subCategory !== product.subCategory) return false;
-  if (f.brand && f.brand !== product.brand) return false;
-  if (f.segment && f.segment !== product.segment) return false;
-  return true;
+const SPECIFICITY_MAP: Record<string, { level: number; label: string }> = {
+  'CUSTOMER:PRODUCT_LIST': { level: 1, label: 'Exact Customer + Exact Product' },
+  'CUSTOMER:RULE':         { level: 2, label: 'Exact Customer + Product Group' },
+  'CUSTOMER:ALL':          { level: 3, label: 'Exact Customer + All Products' },
+  'GROUP:PRODUCT_LIST':    { level: 4, label: 'Customer Group + Exact Product' },
+  'GROUP:RULE':            { level: 5, label: 'Customer Group + Product Group' },
+  'GROUP:ALL':             { level: 6, label: 'Customer Group + All Products' },
+  'ALL:PRODUCT_LIST':      { level: 7, label: 'All Customers + Exact Product' },
+  'ALL:RULE':              { level: 8, label: 'Global Product Rule' },
+  'ALL:ALL':               { level: 9, label: 'Universal (All Customers + All Products)' },
+};
+
+function specificityFor(profile: PricingProfile): { level: number; label: string } {
+  const key = `${profile.customerScope.type}:${profile.productScope.type}`;
+  return (
+    SPECIFICITY_MAP[key] ?? {
+      level: 99,
+      label: `${profile.customerScope.type} + ${profile.productScope.type}`,
+    }
+  );
 }
 
 function customerScore(profile: PricingProfile): number {
@@ -52,6 +62,67 @@ function productScore(profile: PricingProfile): number {
   }
 }
 
+// ── Match checks (return human-readable reason on failure) ─────────────────
+
+type MatchCheck = { matched: true } | { matched: false; reason: string };
+
+function checkCustomerScope(profile: PricingProfile, customer: Customer): MatchCheck {
+  const cs = profile.customerScope;
+  if (cs.type === 'ALL') return { matched: true };
+  if (cs.type === 'CUSTOMER') {
+    if (cs.customerId === customer.id) return { matched: true };
+    const target = db.customers.get(cs.customerId);
+    const targetName = target?.name ?? cs.customerId;
+    return {
+      matched: false,
+      reason: `Customer scope mismatch — profile targets '${targetName}', not '${customer.name}'.`,
+    };
+  }
+  // GROUP
+  if (customer.groupIds.includes(cs.groupId)) return { matched: true };
+  const group = db.groups.get(cs.groupId);
+  const groupName = group?.name ?? cs.groupId;
+  return {
+    matched: false,
+    reason: `Customer scope mismatch — '${customer.name}' is not in the '${groupName}' group.`,
+  };
+}
+
+function checkProductScope(profile: PricingProfile, product: Product): MatchCheck {
+  const ps = profile.productScope;
+  if (ps.type === 'ALL') return { matched: true };
+  if (ps.type === 'PRODUCT_LIST') {
+    if (ps.productIds.includes(product.id)) return { matched: true };
+    return {
+      matched: false,
+      reason: `Product scope mismatch — '${product.title}' is not in this profile's product list.`,
+    };
+  }
+  // RULE — surface the first failing filter for a precise reason
+  const f = ps.filters;
+  if (f.segment && f.segment !== product.segment) {
+    return {
+      matched: false,
+      reason: `Product scope mismatch — segment '${product.segment}' doesn't match rule filter '${f.segment}'.`,
+    };
+  }
+  if (f.brand && f.brand !== product.brand) {
+    return {
+      matched: false,
+      reason: `Product scope mismatch — brand '${product.brand}' doesn't match rule filter '${f.brand}'.`,
+    };
+  }
+  if (f.subCategory && f.subCategory !== product.subCategory) {
+    return {
+      matched: false,
+      reason: `Product scope mismatch — sub-category '${product.subCategory}' doesn't match rule filter '${f.subCategory}'.`,
+    };
+  }
+  return { matched: true };
+}
+
+// ── Price math ─────────────────────────────────────────────────────────────
+
 export function applyOverride(
   basePrice: number,
   override: PriceOverride,
@@ -74,21 +145,20 @@ export function applyOverride(
   return { price: round2(floored), clamped, detail };
 }
 
-function describeScope(profile: PricingProfile): string {
-  const c =
-    profile.customerScope.type === 'CUSTOMER'
-      ? 'specific customer'
-      : profile.customerScope.type === 'GROUP'
-        ? 'group'
-        : 'all customers';
-  const p =
-    profile.productScope.type === 'PRODUCT_LIST'
-      ? 'product list'
-      : profile.productScope.type === 'RULE'
-        ? 'rule'
-        : 'all products';
-  return `customer: ${c}, product: ${p}`;
-}
+// ── Main resolver ──────────────────────────────────────────────────────────
+
+type MatchedRecord = {
+  profile: PricingProfile;
+  cScore: number;
+  pScore: number;
+  level: number;
+  label: string;
+};
+
+type RejectedRecord = {
+  profile: PricingProfile;
+  reason: string;
+};
 
 export function resolvePrice(customerId: string, productId: string): ResolveResult {
   const customer = getCustomer(customerId);
@@ -96,15 +166,38 @@ export function resolvePrice(customerId: string, productId: string): ResolveResu
   if (!product) throw new HttpError(404, 'Product not found');
   if (product.isDeleted) throw new HttpError(410, 'Product has been deleted');
 
-  const matched: Array<{ profile: PricingProfile; cScore: number; pScore: number }> = [];
+  const matched: MatchedRecord[] = [];
+  const rejected: RejectedRecord[] = [];
 
   for (const profile of db.profiles.list()) {
-    if (profile.status !== 'ACTIVE') continue;
-    if (!customerScopeMatches(profile, customer)) continue;
-    if (!productScopeMatches(profile, product)) continue;
-    matched.push({ profile, cScore: customerScore(profile), pScore: productScore(profile) });
+    if (profile.status !== 'ACTIVE') {
+      rejected.push({
+        profile,
+        reason: `Profile status is ${profile.status} — only ACTIVE profiles are considered.`,
+      });
+      continue;
+    }
+    const cMatch = checkCustomerScope(profile, customer);
+    if (!cMatch.matched) {
+      rejected.push({ profile, reason: cMatch.reason });
+      continue;
+    }
+    const pMatch = checkProductScope(profile, product);
+    if (!pMatch.matched) {
+      rejected.push({ profile, reason: pMatch.reason });
+      continue;
+    }
+    const { level, label } = specificityFor(profile);
+    matched.push({
+      profile,
+      cScore: customerScore(profile),
+      pScore: productScore(profile),
+      level,
+      label,
+    });
   }
 
+  // Customer-first sort; ties broken by updatedAt DESC, then id ASC.
   matched.sort((a, b) => {
     if (b.cScore !== a.cScore) return b.cScore - a.cScore;
     if (b.pScore !== a.pScore) return b.pScore - a.pScore;
@@ -114,15 +207,31 @@ export function resolvePrice(customerId: string, productId: string): ResolveResu
     return a.profile.id.localeCompare(b.profile.id);
   });
 
-  const considered: ConsideredProfile[] = matched.map(({ profile, cScore, pScore }) => ({
-    profileId: profile.id,
-    profileName: profile.name,
-    customerScore: cScore,
-    productScore: pScore,
-    matched: true,
-  }));
+  const winner = matched[0];
 
-  if (matched.length === 0) {
+  // Sort rejected by name for stable, scannable output in the breakdown UI.
+  rejected.sort((a, b) => a.profile.name.localeCompare(b.profile.name));
+
+  const considered: ConsideredProfile[] = [
+    ...matched.map((m) => ({
+      profileId: m.profile.id,
+      profileName: m.profile.name,
+      matched: true as const,
+      customerScore: m.cScore,
+      productScore: m.pScore,
+      level: m.level,
+      label: m.label,
+      isWinner: winner !== undefined && m.profile.id === winner.profile.id,
+    })),
+    ...rejected.map((r) => ({
+      profileId: r.profile.id,
+      profileName: r.profile.name,
+      matched: false as const,
+      reason: r.reason,
+    })),
+  ];
+
+  if (!winner) {
     return {
       customerId,
       productId,
@@ -134,20 +243,23 @@ export function resolvePrice(customerId: string, productId: string): ResolveResu
     };
   }
 
-  const winner = matched[0]!.profile;
-  const { price, clamped, detail } = applyOverride(product.basePrice, winner.priceOverride);
-
-  const scopeText = describeScope(winner);
+  const { price, clamped, detail } = applyOverride(product.basePrice, winner.profile.priceOverride);
   const clampNote = clamped ? ' (clamped to zero)' : '';
   const explanation =
-    `Profile '${winner.name}' applied (${scopeText}). ${detail}${clampNote}`.trim();
+    `Profile '${winner.profile.name}' selected at Level ${winner.level} — ${winner.label}. ${detail}${clampNote}`.trim();
 
   return {
     customerId,
     productId,
     basePrice: round2(product.basePrice),
     finalPrice: price,
-    source: { kind: 'PROFILE', profileId: winner.id, profileName: winner.name },
+    source: {
+      kind: 'PROFILE',
+      profileId: winner.profile.id,
+      profileName: winner.profile.name,
+      level: winner.level,
+      label: winner.label,
+    },
     explanation,
     consideredProfiles: considered,
   };

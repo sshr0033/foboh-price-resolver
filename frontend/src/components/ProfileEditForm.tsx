@@ -160,14 +160,14 @@ export default function ProfileEditForm({ profile, onCancel, onSaved }: Props): 
     if (psType === 'RULE' && !ruleSegment && !ruleSubCategory && !ruleBrand)
       out.push('Rule scope needs at least one filter.');
     if (ovType === 'ADJUSTMENT') {
-      if (!Number.isFinite(adjValue) || adjValue < 0)
-        out.push('Adjustment value must be 0 or greater.');
-      if (adjMode === 'DYNAMIC' && adjValue > 100)
+      if (!Number.isFinite(adjValue)) out.push('Enter an adjustment value.');
+      else if (adjValue < 0) out.push('Adjustment value must be 0 or greater.');
+      else if (adjMode === 'DYNAMIC' && adjValue > 100)
         out.push('Dynamic adjustment must be between 0 and 100.');
     }
     if (ovType === 'CUSTOM_PRICE') {
-      if (!Number.isFinite(customPrice) || customPrice < 0)
-        out.push('Custom price must be 0 or greater.');
+      if (!Number.isFinite(customPrice)) out.push('Enter a custom price.');
+      else if (customPrice < 0) out.push('Custom price must be 0 or greater.');
     }
     return out;
   }, [
@@ -564,11 +564,14 @@ export default function ProfileEditForm({ profile, onCancel, onSaved }: Props): 
               </span>
               <input
                 type="number"
+                inputMode="decimal"
                 min={0}
                 max={adjMode === 'DYNAMIC' ? 100 : undefined}
                 step={adjMode === 'DYNAMIC' ? 0.1 : 0.01}
-                value={Number.isFinite(adjValue) ? adjValue : 0}
-                onChange={(e) => setAdjValue(Number(e.target.value))}
+                value={Number.isFinite(adjValue) ? adjValue : ''}
+                onChange={(e) =>
+                  setAdjValue(e.target.value === '' ? Number.NaN : Number(e.target.value))
+                }
                 aria-invalid={adjInvalid}
                 className={`rounded-md border px-3 py-2 text-sm outline-none ${
                   adjInvalid
@@ -585,10 +588,13 @@ export default function ProfileEditForm({ profile, onCancel, onSaved }: Props): 
             <span className="text-xs font-medium text-slate-600">Flat final price ($)</span>
             <input
               type="number"
+              inputMode="decimal"
               min={0}
               step={0.01}
-              value={Number.isFinite(customPrice) ? customPrice : 0}
-              onChange={(e) => setCustomPrice(Number(e.target.value))}
+              value={Number.isFinite(customPrice) ? customPrice : ''}
+              onChange={(e) =>
+                setCustomPrice(e.target.value === '' ? Number.NaN : Number(e.target.value))
+              }
               aria-invalid={customPriceInvalid}
               className={`rounded-md border px-3 py-2 text-sm outline-none ${
                 customPriceInvalid
@@ -613,7 +619,7 @@ export default function ProfileEditForm({ profile, onCancel, onSaved }: Props): 
       ) : null}
 
       {/* Footer — sticks to the modal bottom */}
-      <div className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-white border-t border-slate-200 flex items-center justify-end gap-2">
+      <div className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-white border-t border-slate-200 flex items-center justify-end gap-2 z-10 shadow-[0_-6px_12px_-6px_rgba(15,23,42,0.08)]">
         <button
           type="button"
           onClick={onCancel}

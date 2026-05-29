@@ -483,6 +483,8 @@ export const openApiSpec = {
                   kind: { const: 'PROFILE' },
                   profileId: { type: 'string' },
                   profileName: { type: 'string' },
+                  level: { type: 'integer' },
+                  label: { type: 'string' },
                 },
               },
             ],
@@ -491,14 +493,30 @@ export const openApiSpec = {
           consideredProfiles: {
             type: 'array',
             items: {
-              type: 'object',
-              properties: {
-                profileId: { type: 'string' },
-                profileName: { type: 'string' },
-                customerScore: { type: 'integer' },
-                productScore: { type: 'integer' },
-                matched: { const: true },
-              },
+              oneOf: [
+                {
+                  type: 'object',
+                  properties: {
+                    profileId: { type: 'string' },
+                    profileName: { type: 'string' },
+                    matched: { const: true },
+                    customerScore: { type: 'integer' },
+                    productScore: { type: 'integer' },
+                    level: { type: 'integer' },
+                    label: { type: 'string' },
+                    isWinner: { type: 'boolean' },
+                  },
+                },
+                {
+                  type: 'object',
+                  properties: {
+                    profileId: { type: 'string' },
+                    profileName: { type: 'string' },
+                    matched: { const: false },
+                    reason: { type: 'string' },
+                  },
+                },
+              ],
             },
           },
         },
