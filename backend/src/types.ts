@@ -59,15 +59,38 @@ export type PricingProfile = {
 
 export type ResolveSource =
   | { kind: 'BASE_PRICE' }
-  | { kind: 'PROFILE'; profileId: string; profileName: string };
+  | {
+      kind: 'PROFILE';
+      profileId: string;
+      profileName: string;
+      level: number;
+      label: string;
+    };
 
-export type ConsideredProfile = {
-  profileId: string;
-  profileName: string;
-  customerScore: number;
-  productScore: number;
-  matched: true;
-};
+/**
+ * A profile that was considered during resolution.
+ *
+ * The two variants are distinguished by `matched`:
+ * - matched = true → carries scoring + level info, with `isWinner` flagging the chosen profile.
+ * - matched = false → carries a human-readable rejection reason.
+ */
+export type ConsideredProfile =
+  | {
+      profileId: string;
+      profileName: string;
+      matched: true;
+      customerScore: number;
+      productScore: number;
+      level: number;
+      label: string;
+      isWinner: boolean;
+    }
+  | {
+      profileId: string;
+      profileName: string;
+      matched: false;
+      reason: string;
+    };
 
 export type ResolveResult = {
   customerId: string;
