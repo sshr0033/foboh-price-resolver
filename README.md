@@ -1,153 +1,125 @@
-# FOBOH — Pricing Profile
+# FOBOH — Bespoke Pricing Profiles
 
-A full-stack reference implementation of a wholesale food-and-beverage **bespoke
-pricing** workflow: build customer-specific pricing profiles, preview prices
-live, save them, and **resolve** `(customer, product) → final price` against the
-full rule set — with a complete, human-readable explanation of every decision.
+A full-stack reference implementation of a wholesale food-and-beverage **bespoke pricing** workflow. A pricing manager authors customer-specific pricing profiles through a guided wizard (with a live preview), saves them as Draft or Active, and any caller can **resolve** a `(customer, product)` pair into a single final price — returned alongside a complete, human-readable explanation of *why* that price won.
 
 ```
 Pricing Manager ──► Wizard ──► Save profile ──► Store
                                                   │
 Sales rep / app / API ──► Resolve(customer, product) ──► final price + why
 ```
+
+**Tech stack**
+
+- **Backend** — Node 20 · Express 4 · TypeScript · Zod · swagger-ui-express · in-memory store
+- **Frontend** — Vite · React 18 · TypeScript · Redux Toolkit · RTK Query · React Router 6 · Tailwind 3
+
 ---
+
 ## Contents
-- [Tech stack](#tech-stack)
-- [Quick start](#quick-start)
+
+- [Setup](#setup)
 - [What it does](#what-it-does)
 - [The price resolver in 60 seconds](#the-price-resolver-in-60-seconds)
-- [Documentation](#documentation)
 - [Project structure](#project-structure)
 - [API reference](#api-reference)
-- [Seed data](#seed-data)
-- [Design decisions & trade-offs](#design-decisions--trade-offs)
+- [Documentation](#documentation)
+- [Transcripts](#transcripts)
+- [Trade-offs](#trade-offs)
 - [Known limitations](#known-limitations)
 - [What I'd do next](#what-id-do-next)
 
 ---
-## Tech stack
 
-- **Backend:** Node 20 · Express 4 · TypeScript · Zod · swagger-ui-express · in-memory store
-- **Frontend:** Vite · React 18 · TypeScript · Redux Toolkit · RTK Query · React Router 6 · Tailwind 3
----
-## Quick start
+## Setup
+
+The project runs as two processes — an Express API and a Vite dev server. From the repo root:
 
 ```bash
-cd backend  && npm install && npm run dev   # http://localhost:4000
-cd frontend && npm install && npm run dev   # http://localhost:5173
+# Terminal 1 — backend API (http://localhost:4000)
+cd backend  && npm install && npm run dev
+
+# Terminal 2 — frontend SPA (http://localhost:5173)
+cd frontend && npm install && npm run dev
 ```
 
-Swagger UI: <http://localhost:4000/api/docs>
+The frontend expects the API at `http://localhost:4000`; the API allows CORS from `http://localhost:5173`, so the defaults work with no extra configuration. Interactive API docs (Swagger UI) are served at <http://localhost:4000/api/docs>. The store is seeded in memory at startup and **resets on every restart** — no database or migrations to run.
 
-Four calls that hit the resolver (these are Examples 1, 2, 3 and 6 in the
-resolver guide):
+Four `curl` calls that exercise the resolver end-to-end (these correspond to the worked examples in the LLD):
 
 ```bash
 # Profile C wins — bespoke custom price $95.00
 curl 'http://localhost:4000/api/pricing/resolve?customerId=cus_bondi&productId=prd_koybrunv'
 
-# Profile B wins on tie-break — 409.32 - 15 = 394.32
+# Profile B wins on tie-break — 409.32 − 15 = 394.32
 curl 'http://localhost:4000/api/pricing/resolve?customerId=cus_bondi&productId=prd_lacbnat'
 
-# Profile A wins — 279.06 * 0.9 = 251.15
+# Profile A wins — 279.06 × 0.9 = 251.15
 curl 'http://localhost:4000/api/pricing/resolve?customerId=cus_bondi&productId=prd_hgvpin21'
 
-# No match — base price 58.00
+# No match — falls back to base price $58.00
 curl 'http://localhost:4000/api/pricing/resolve?customerId=cus_bondi&productId=prd_necsr'
 ```
+
 ---
 
 ## What it does
 
-Suppliers don't sell at one flat price — they negotiate different prices with
-different customers and groups. This app lets a pricing manager **author those
-deals** as reusable *pricing profiles*, and lets any caller **resolve** the final
-price for a `(customer, product)` pair.
+Suppliers don't sell at one flat price — they negotiate different prices with different customers and groups. This app lets a pricing manager **author those deals** as reusable *pricing profiles*, and lets any caller **resolve** the final price for a `(customer, product)` pair.
 
 Two journeys:
 
-1. **Authoring (write path)** — a 3-step wizard: name the profile, pick products
-   and a price adjustment (with a live preview), assign customers, then save as
-   **Draft** or **Activate**.
-2. **Resolving (read path)** — send a `customerId` and `productId`; get back the
-   single winning price, the profile that produced it, a one-line reason, and a
-   full matched/rejected breakdown.
-  
+1. **Authoring (write path)** — a 3-step wizard: name the profile, pick products and a price adjustment (with a live preview), assign customers, then save as **Draft** or **Activate**.
+2. **Resolving (read path)** — send a `customerId` and `productId`; get back the single winning price, the profile that produced it, a one-line reason, and a full matched/rejected breakdown.
+
 ---
 
 ## The price resolver in 60 seconds
 
 Given a customer and a product, the resolver:
 
-1. **Matches** — keeps only profiles that are `ACTIVE`, whose customer scope
-   covers the customer, and whose product scope covers the product.
-2. **Ranks** — sorts the matches by, in order: **customer-specificity** (Customer
-   > Group > All), then **product-specificity** (List > Rule > All), then **most
-   recently updated**, then id as a final deterministic tie-break.
-3. **Applies** — takes the winner's price rule (a custom price, or a fixed/%
-   adjustment), clamps negatives to \$0.00, and rounds half-up to cents.
+1. **Matches** — keeps only profiles that are `ACTIVE`, whose customer scope covers the customer, and whose product scope covers the product.
+2. **Ranks** — sorts matches by **customer-specificity** (Customer > Group > All), then **product-specificity** (List > Rule > All), then **most recently updated**, then `id` as a final deterministic tie-break.
+3. **Applies** — takes the winner's price rule (a custom price, or a fixed/% adjustment), clamps negatives to `$0.00`, and rounds half-up to cents.
 
-If nothing matches, it returns the product's **base price**. Either way, the
-response carries a full audit trail of which profiles matched (with scores) and
-which were rejected (with reasons).
+If nothing matches, it returns the product's **base price**. Either way, the response carries a full audit trail of which profiles matched (with scores) and which were rejected (with reasons).
 
-> **The golden rule:** customer-specificity is checked *before* product-
-> specificity — a deal struck with *this customer* outranks a deal aimed at *this
-> product*, even when the product deal is cheaper. *"We agreed this with you"* is
-> a stronger promise than *"this is our list price."*
+> **The golden rule:** customer-specificity is checked *before* product-specificity — a deal struck with *this customer* outranks a deal aimed at *this product*, even when the product deal is cheaper. *"We agreed this with you"* is a stronger promise than *"this is our list price."*
 
-A full plain-English walkthrough with worked numbers and every edge case is in
-**[`docs/PRICE_RESOLVER_EXPLAINED.md`](docs/PRICE_RESOLVER_EXPLAINED.md)**.
-
----
-
-## Documentation
-
-| Document | What it covers | Audience |
-|---|---|---|
-| **[docs/PRICE_RESOLVER_EXPLAINED.md](docs/PRICE_RESOLVER_EXPLAINED.md)** | Plain-English resolver logic, seed data, worked examples, all edge cases | Everyone — start here |
-| **[docs/DATA_FLOW_DIAGRAM.md](docs/DATA_FLOW_DIAGRAM.md)** | End-to-end data flow (DFD), from wizard to resolver | Everyone |
-| **[docs/HLD.md](docs/HLD.md)** | High-level design — architecture, components, decisions | Product + engineering |
-| **[docs/LLD.md](docs/LLD.md)** | Low-level design — modules, types, the resolver algorithm step by step, API surface | Engineering |
-
-> The diagram documents use Mermaid, which renders automatically when viewed on
-> GitHub.
+The full step-by-step algorithm, the scoring table, and verified worked examples live in the [low-level design doc](architecture/low-level-design/README.md).
 
 ---
 
 ## Project structure
 
 ```
-foboh-pricing/
+foboh-pr/
 ├── README.md
-├── docs/
-│   ├── PRICE_RESOLVER_EXPLAINED.md   # plain-English logic + examples + edge cases
-│   ├── DATA_FLOW_DIAGRAM.md          # DFD: context, detailed, resolver zoom-in
-│   ├── HLD.md                        # high-level design
-│   └── LLD.md                        # low-level design
+├── architecture/
+│   ├── high-level-design/        # system architecture, deployment, design decisions (+ PNGs)
+│   └── low-level-design/         # domain model, resolve flow, DB schema, the algorithm (+ PNGs)    
 ├── backend/
 │   └── src/
-│       ├── index.ts                  # app bootstrap (CORS, Swagger, error handler)
-│       ├── routes/                   # URL → controller wiring
-│       ├── controllers/              # parse + validate, shape responses
+│       ├── index.ts              # app bootstrap (CORS, Swagger, error handler)
+│       ├── routes/               # URL → controller wiring
+│       ├── controllers/          # parse + validate, shape responses
 │       ├── services/
 │       │   ├── pricing-resolver.service.ts   # ★ the engine
 │       │   ├── preview.service.ts
 │       │   ├── profiles.service.ts
 │       │   ├── products.service.ts
 │       │   └── customers.service.ts
-│       ├── schemas/profile.ts        # Zod validation
-│       ├── store/index.ts            # in-memory tables
-│       ├── data/seed.ts              # seed data
-│       ├── types.ts                  # shared domain types
-│       └── utils/                    # round (half-up), HttpError
+│       ├── schemas/profile.ts    # Zod validation
+│       ├── store/index.ts        # in-memory tables
+│       ├── data/seed.ts          # seed data
+│       ├── types.ts              # shared domain types
+│       └── utils/                # round (half-up), HttpError
 └── frontend/
     └── src/
-        ├── pages/                    # PricingListPage, PricingWizardPage
+        ├── pages/                # PricingListPage, PricingWizardPage
         ├── components/
-        │   ├── wizard/               # the 3-step authoring flow
-        │   └── resolver/            # ResolverPanel — resolve + breakdown UI
-        └── store/                    # RTK Query api + wizard slice
+        │   ├── wizard/           # the 3-step authoring flow
+        │   └── resolver/         # ResolverPanel — resolve + breakdown UI
+        └── store/                # RTK Query api + wizard slice
 ```
 
 ---
@@ -169,74 +141,40 @@ foboh-pricing/
 | `POST /api/pricing/preview` | Preview prices for `{ productIds, priceOverride }` | `400` |
 | `GET /api/pricing/resolve` | **Resolve** a price — `?customerId&productId` | `400`, `404`, `410` |
 
-### Resolve response (shape)
-
-```jsonc
-{
-  "customerId": "cus_bondi",
-  "productId": "prd_lacbnat",
-  "basePrice": 409.32,
-  "finalPrice": 394.32,
-  "source": { "kind": "PROFILE", "profileId": "...", "profileName": "VIP — $15 off Sparkling",
-              "level": 5, "label": "Customer Group + Product Group" },
-  "explanation": "Profile 'VIP — $15 off Sparkling' selected at Level 5 … −$15.00 applied to base $409.32.",
-  "consideredProfiles": [ /* matched (with scores, isWinner) + rejected (with reasons) */ ]
-}
-```
+The full request/response schemas are browsable in Swagger UI at <http://localhost:4000/api/docs>.
 
 ---
 
-## Seed data
+## Documentation
 
-The in-memory store is seeded at startup with three customer groups, five
-customers, several products, and three active pricing profiles:
+| Document | What it covers |
+|---|---|
+| **[High-Level Design](architecture/high-level-design/README.md)** | System architecture, the pricing model, deployment shape, key design decisions |
+| **[Low-Level Design](architecture/low-level-design/README.md)** | Domain model, resolve sequence, DB schema, the resolver algorithm in full, worked examples, every edge case |
 
-| Profile | Who | Which products | How much |
-|---|---|---|---|
-| A | Group: Independent Retailers | Rule: segment = Wine | −10% |
-| B | Group: VIP | Rule: Wine **and** Sparkling | −\$15 |
-| C | Customer: Bondi Cellars | List: Koyama Methode Brut | Custom \$95.00 |
-
-The full seed (with prices and group memberships) is laid out in
-[`docs/PRICE_RESOLVER_EXPLAINED.md`](docs/PRICE_RESOLVER_EXPLAINED.md#3-the-seed-data-our-worked-example-world).
+> The architecture docs embed PNG diagrams that render directly on GitHub.
 
 ---
 
-## Design decisions & trade-offs
+## Transcripts
 
-**1. Precedence — specificity wins, customer-first.** When two profiles tie,
-the most recently updated wins. Customer-specificity beats product-specificity
-because in F&B wholesale the per-customer price book is the supplier's primary
-commercial instrument: a deal struck with a specific customer is a stronger
-expression of intent than a product-wide rule that happens to hit them.
+The AI-assistant working transcripts produced while building this project live in [`transcripts/`](transcripts/). They capture the design conversations and iteration behind the resolver logic, the API surface, and the architecture docs.
 
-**2. "All products" — snapshot vs dynamic.** A `PRODUCT_LIST` is a snapshot
-frozen by the wizard's "select all" at save time (predictable, auditable). A
-`RULE { type: 'ALL' }` is dynamic and resolves against the live catalogue, so
-new SKUs are auto-covered. The wizard produces snapshots; the API accepts both,
-because "everything we sell at 5% off" is a real contract-level pattern that
-shouldn't need a re-save per SKU.
+---
 
-**3. Deleted products — soft delete.** Resolver and search exclude them;
-`GET /products/:id` on a deleted product returns `410 Gone`. Profiles that still
-reference a deleted id in a `PRODUCT_LIST` are left untouched — the id is simply
-skipped at resolve time. Rewriting history would lose intent (the SKU might be
-reinstated next week).
+## Trade-offs
 
-**4. Rounding — half-up to 2dp.** Banker's rounding is statistically nicer, but
-retail intuition expects \$0.125 → \$0.13, and a rep arguing a one-cent rounding
-direction is a worse outcome than micro-bias.
+Every notable decision here optimises for **explainability and commercial intent** over raw simplicity or theoretical purity — because in F&B wholesale, *why* a price was charged is as important as the number itself.
 
-**5. Negative prices — clamped to \$0.00.** Saving a 200% decrease on a \$50 item
-is legal commercial intent (the customer pays \$0); it's clamped and flagged
-rather than rejected at save time.
-
-**6. In-memory store.** Resets on restart, single process, no concurrency model.
-With a database this becomes a `products` table (soft-delete column, audit
-timestamps); a `pricing_profiles` table storing scope/override as `jsonb` for
-shape flexibility; an index on `(status, updatedAt)` so the resolver scans only
-active profiles; and an idempotency key plus a version column for optimistic
-concurrency on edits.
+| Decision | Choice | Why |
+|---|---|---|
+| **Precedence** | Customer-specificity beats product-specificity | A per-customer deal is the supplier's primary commercial instrument; *"we agreed this with you"* outranks a product-wide rule, even when the rule is cheaper. |
+| **Tie-break** | Most recently updated wins (then `id`) | The newest deal supersedes older ones, and the final `id` step keeps results deterministic. |
+| **"All products"** | Wizard saves a **snapshot**; API also accepts a **dynamic** "all" rule | Snapshots are auditable and predictable; dynamic rules auto-cover future SKUs — both are real contract patterns. |
+| **Deleted products** | Soft delete; resolver skips silently, `GET /products/:id` returns `410` | Preserves history and intent; a reinstated SKU keeps its old deals rather than losing them to a rewrite. |
+| **Rounding** | Half-up to 2dp (`$0.125 → $0.13`) | Banker's rounding is statistically nicer, but a rep arguing a one-cent direction is the worse outcome. |
+| **Negative prices** | Clamped to `$0.00`, flagged | A "200% off" adjustment is legal intent (the customer pays nothing); clamp-and-flag beats rejecting it at save time. |
+| **Storage** | In-memory store | Fast to run and demo. The store is isolated behind `store/index.ts` so the resolver and API contract are untouched when it's swapped for Postgres. |
 
 ---
 
@@ -244,22 +182,15 @@ concurrency on edits.
 
 These are intentional simplifications for a reference build:
 
-- The wizard collapses a multi-customer selection to a single `CUSTOMER` scope;
-  a production version would emit one profile per customer or add a
-  `CUSTOMER_LIST` scope.
-- The wizard only produces `PRODUCT_LIST` (snapshot) product scopes; `RULE` and
-  `ALL` scopes are created via the API.
+- The in-memory store resets on restart — single process, no concurrency model.
+- The wizard collapses a multi-customer selection to a single `CUSTOMER` scope; `RULE` and `ALL` product scopes are created via the API rather than the UI.
 - No effective-dating yet — profiles are activated/deactivated manually.
-- The per-resolve breakdown is returned but not persisted.
+- The per-resolve breakdown is returned to the caller but not persisted.
 
 ---
 
 ## What I'd do next
 
-- **Effective-dating** profiles (`activeFrom` / `activeTo`) so seasonal contracts
-  auto-expire without a manual deactivation step.
-- **Persisted audit log** of every resolved price, keyed by
-  `(customerId, productId, profileId, resolvedAt, finalPrice)` — closes the
-  "why did this customer get charged \$X last Tuesday?" question over time.
-- **Contract-level profile bundles** — a customer signs a contract grouping N
-  profiles whose status flips together under one audit trail.
+The natural next step is **persistence and time-awareness**. Swapping the in-memory store for Postgres — a `products` table with a soft-delete column, a `pricing_profiles` table storing scope/override as `jsonb` for shape flexibility, and an index on `(status, updatedAt)` so the resolver scans only active profiles in tie-break order — turns this from a demo into something that survives a restart, with an optimistic-concurrency version column to make concurrent edits safe.
+
+On top of that I'd add **effective-dating** (`activeFrom` / `activeTo`) so seasonal contracts expire on their own instead of needing a manual deactivation, and a **persisted audit log** of every resolved price keyed by `(customerId, productId, profileId, resolvedAt, finalPrice)` — which finally answers *"why did this customer get charged $X last Tuesday?"* historically rather than only at the moment of resolution. Further out, **contract-level profile bundles** would let a customer's signed contract group several profiles whose status flips together under one audit trail, matching how these deals are actually negotiated.
