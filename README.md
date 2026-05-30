@@ -21,8 +21,6 @@ Sales rep / app / API ──► Resolve(customer, product) ──► final price
 - [What it does](#what-it-does)
 - [The price resolver in 60 seconds](#the-price-resolver-in-60-seconds)
 - [Project structure](#project-structure)
-- [API reference](#api-reference)
-- [Documentation](#documentation)
 - [Transcripts](#transcripts)
 - [Trade-offs](#trade-offs)
 - [Known limitations](#known-limitations)
