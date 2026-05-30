@@ -10,14 +10,11 @@ Pricing Manager ──► Wizard ──► Save profile ──► Store
                                                   │
 Sales rep / app / API ──► Resolve(customer, product) ──► final price + why
 ```
-
 ---
-
 ## Contents
-
-- [What it does](#what-it-does)
 - [Tech stack](#tech-stack)
 - [Quick start](#quick-start)
+- [What it does](#what-it-does)
 - [The price resolver in 60 seconds](#the-price-resolver-in-60-seconds)
 - [Documentation](#documentation)
 - [Project structure](#project-structure)
@@ -28,32 +25,11 @@ Sales rep / app / API ──► Resolve(customer, product) ──► final price
 - [What I'd do next](#what-id-do-next)
 
 ---
-
-## What it does
-
-Suppliers don't sell at one flat price — they negotiate different prices with
-different customers and groups. This app lets a pricing manager **author those
-deals** as reusable *pricing profiles*, and lets any caller **resolve** the final
-price for a `(customer, product)` pair.
-
-Two journeys:
-
-1. **Authoring (write path)** — a 3-step wizard: name the profile, pick products
-   and a price adjustment (with a live preview), assign customers, then save as
-   **Draft** or **Activate**.
-2. **Resolving (read path)** — send a `customerId` and `productId`; get back the
-   single winning price, the profile that produced it, a one-line reason, and a
-   full matched/rejected breakdown.
-
----
-
 ## Tech stack
 
 - **Backend:** Node 20 · Express 4 · TypeScript · Zod · swagger-ui-express · in-memory store
 - **Frontend:** Vite · React 18 · TypeScript · Redux Toolkit · RTK Query · React Router 6 · Tailwind 3
-
 ---
-
 ## Quick start
 
 ```bash
@@ -79,7 +55,24 @@ curl 'http://localhost:4000/api/pricing/resolve?customerId=cus_bondi&productId=p
 # No match — base price 58.00
 curl 'http://localhost:4000/api/pricing/resolve?customerId=cus_bondi&productId=prd_necsr'
 ```
+---
 
+## What it does
+
+Suppliers don't sell at one flat price — they negotiate different prices with
+different customers and groups. This app lets a pricing manager **author those
+deals** as reusable *pricing profiles*, and lets any caller **resolve** the final
+price for a `(customer, product)` pair.
+
+Two journeys:
+
+1. **Authoring (write path)** — a 3-step wizard: name the profile, pick products
+   and a price adjustment (with a live preview), assign customers, then save as
+   **Draft** or **Activate**.
+2. **Resolving (read path)** — send a `customerId` and `productId`; get back the
+   single winning price, the profile that produced it, a one-line reason, and a
+   full matched/rejected breakdown.
+  
 ---
 
 ## The price resolver in 60 seconds
