@@ -156,7 +156,7 @@ The full request/response schemas are browsable in Swagger UI at <http://localho
 
 ## Transcripts
 
-The AI-assistant working transcripts produced while building this project live in [`transcripts/`](transcripts/). They capture the design conversations and iteration behind the resolver logic, the API surface, and the architecture docs.
+The AI-assistant working transcripts produced while building this project live in [`transcripts/`](https://drive.google.com/drive/folders/1F7AkD9Ug6nYNiR3SgiWJMJhemoIJ2Uff?usp=sharing). They capture the design conversations and iteration behind the resolver logic, the API surface, and the architecture docs.
 
 ---
 
